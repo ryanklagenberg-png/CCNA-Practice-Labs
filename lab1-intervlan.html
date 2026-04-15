@@ -1,0 +1,1662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CCNA Lab 1 - InterVLAN Routing (Router-on-a-Stick)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #080808; background-image: radial-gradient(circle, #1c1c1c 1px, transparent 1px); background-size: 28px 28px; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; height: 100vh; display: flex; flex-direction: column; }
+    header { background: #111111; padding: 12px 24px; border-bottom: 2px solid #1a1a1a; display: flex; align-items: center; justify-content: space-between; }
+    header h1 { font-size: 16px; color: #00d4ff; } header p { font-size: 12px; color: #888; }
+    .nav-back { font-size: 12px; color: #00d4ff; text-decoration: none; border: 1px solid #00d4ff44; padding: 4px 12px; border-radius: 4px; }
+    .nav-back:hover { background: #00d4ff22; }
+    .header-left { display: flex; flex-direction: column; gap: 2px; }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+
+    /* Scenario in right panel */
+    .scenario-section {
+      background: linear-gradient(135deg, #0a0a1a, #0d0d14);
+      padding: 12px;
+      font-size: 12px;
+      color: #bbb;
+      border-bottom: 1px solid #1a1a2a;
+      line-height: 1.6;
+      flex-shrink: 0;
+    }
+    .scenario-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #00d4ff;
+      font-weight: bold;
+      margin-bottom: 6px;
+    }
+    .scenario-text {
+      margin-bottom: 8px;
+    }
+    .scenario-objective {
+      margin-top: 8px;
+      color: #ffd166;
+      font-weight: bold;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    /* IP Address Table */
+    .ip-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      font-size: 12px;
+    }
+    .ip-table th {
+      background: #0d0d1a;
+      color: #00d4ff;
+      text-align: left;
+      padding: 5px 8px;
+      border: 1px solid #1a1a2a;
+      font-weight: bold;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .ip-table td {
+      padding: 4px 8px;
+      border: 1px solid #1a1a2a;
+      color: #aaa;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+    }
+    .ip-table tr:nth-child(even) td { background: #0a0a12; }
+    .ip-table .device-col { color: #e0e0e0; font-weight: bold; font-family: 'Segoe UI', sans-serif; }
+
+    /* Section divider between scenario and tasks */
+    .tasks-divider {
+      padding: 8px 12px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #555;
+      font-weight: bold;
+      border-bottom: 1px solid #1a1a1a;
+      background: #0d0d0d;
+      flex-shrink: 0;
+    }
+
+    /* Task status indicators */
+    .task-status {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      flex-shrink: 0;
+      transition: all 0.3s;
+      border: 2px solid #2a2a2a;
+      background: transparent;
+    }
+    .task-status .status-icon { display: none; }
+
+    /* Completed state */
+    .task-block.done .task-status {
+      border-color: #00ff41;
+      background: #00ff41;
+      box-shadow: 0 0 8px #00ff4144;
+    }
+    .task-block.done .task-status .icon-check { display: block; color: #080808; font-weight: bold; }
+
+    /* In-progress/partial state */
+    .task-block.wrong .task-status {
+      border-color: #ff9900;
+      background: #ff990022;
+      box-shadow: 0 0 8px #ff990044;
+    }
+    .task-block.wrong .task-status .icon-x { display: block; color: #ff9900; font-weight: bold; }
+    .task-block.wrong { border-color: #ff990044; }
+    .task-block.wrong .task-title { color: #ffaa33; }
+
+    /* Completed overrides wrong */
+    .task-block.done.wrong .task-status {
+      border-color: #00ff41;
+      background: #00ff41;
+      box-shadow: 0 0 8px #00ff4144;
+    }
+    .task-block.done.wrong .task-status .icon-x { display: none; }
+    .task-block.done.wrong .task-status .icon-check { display: block; }
+    .task-block.done.wrong { border-color: #00ff4144; }
+    .task-block.done.wrong .task-title { color: #00ff41; }
+
+    /* Main layout */
+    .main-area { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+    .topology { flex: 1; position: relative; min-width: 0; }
+    svg.lines { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+    .device { display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; z-index: 1; padding: 10px; border-radius: 12px; transition: background 0.2s; position: absolute; }
+    .device:hover { background: rgba(0,212,255,0.1); }
+    .device-icon { font-size: 36px; }
+    .device-label { font-size: 12px; font-weight: bold; text-align: center; }
+    .device-sublabel { font-size: 10px; color: #888; text-align: center; max-width: 130px; }
+
+    /* Right panel */
+    .right-panel { position: relative; z-index: 150;
+      width: 360px; flex-shrink: 0; background: #111111; border-left: 2px solid #1a1a1a;
+      display: flex; flex-direction: column; overflow: hidden;
+      min-width: 300px; max-width: 70vw;
+      transition: none;
+    }
+
+    /* Resize handle */
+    .panel-resize-handle {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 6px;
+      cursor: col-resize;
+      z-index: 200;
+      background: transparent;
+      transition: background 0.2s;
+    }
+    .panel-resize-handle:hover,
+    .panel-resize-handle.dragging {
+      background: #00d4ff44;
+    }
+    .panel-resize-handle::after {
+      content: '';
+      position: absolute;
+      left: 1px; top: 50%;
+      transform: translateY(-50%);
+      width: 3px; height: 40px;
+      border-radius: 2px;
+      background: #333;
+      transition: background 0.2s;
+    }
+    .panel-resize-handle:hover::after,
+    .panel-resize-handle.dragging::after {
+      background: #00d4ff;
+    }
+
+    /* When dragging, prevent text selection */
+    body.resizing { cursor: col-resize !important; user-select: none; }
+    .panel-header { background: #1a1a1a; padding: 12px 16px; font-size: 13px; font-weight: bold; color: #00d4ff;
+      border-bottom: 1px solid #333333; letter-spacing: 0.5px; flex-shrink: 0; }
+    .panel-scroll { flex: 1; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; }
+    .panel-body { padding: 14px 12px; display: flex; flex-direction: column; gap: 8px; }
+    .panel-footer { padding: 10px 12px; border-top: 1px solid #1a1a1a; font-size: 10px; color: #444; text-align: center; flex-shrink: 0; }
+
+    /* Task blocks with hint system */
+    .task-block {
+      background: #0d0d0d;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      overflow: hidden;
+      transition: all 0.3s;
+    }
+    .task-block.done { border-color: #00ff4144; }
+    .task-block.done .task-number { background: #00ff41; color: #080808; border-color: #00ff41; }
+    .task-block.done .task-title { color: #00ff41; }
+
+    .task-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+    }
+    .task-number {
+      width: 24px; height: 24px; border-radius: 50%;
+      background: #1a1a1a; color: #00d4ff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: bold; flex-shrink: 0;
+      border: 1px solid #00d4ff44; transition: all 0.3s;
+    }
+    .task-title {
+      font-size: 12px; font-weight: bold; color: #e0e0e0;
+      flex: 1;
+    }
+
+    /* Hint button */
+    .hint-btn {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      border: 1px solid #333;
+      background: #1a1a1a;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      transition: all 0.2s;
+      flex-shrink: 0;
+      position: relative;
+    }
+    .hint-btn:hover { border-color: #ffd166; background: #1a1a0e; }
+    .hint-btn.level1 { border-color: #ffd16666; background: #ffd16612; }
+    .hint-btn.level2 { border-color: #ff990066; background: #ff990012; }
+    .hint-btn.level3 { border-color: #00ff4166; background: #00ff4112; }
+
+    /* Hint level indicator dots */
+    .hint-dots {
+      display: flex;
+      gap: 3px;
+      position: absolute;
+      bottom: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    .hint-dot {
+      width: 4px; height: 4px;
+      border-radius: 50%;
+      background: #333;
+      transition: all 0.2s;
+    }
+    .hint-dot.active { background: #ffd166; }
+    .hint-btn.level2 .hint-dot.active { background: #ff9900; }
+    .hint-btn.level3 .hint-dot.active { background: #00ff41; }
+
+    /* Hint content area */
+    .hint-content {
+      display: none;
+      padding: 0 12px 12px 46px;
+      font-size: 12px;
+      line-height: 1.7;
+    }
+    .hint-content.visible { display: block; }
+
+    .hint-level {
+      display: none;
+      animation: hintFade 0.3s ease;
+    }
+    .hint-level.visible { display: block; }
+
+    @keyframes hintFade {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .hint-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      font-weight: bold;
+      margin-bottom: 4px;
+      padding: 2px 8px;
+      border-radius: 3px;
+      display: inline-block;
+    }
+    .hint-label-1 { color: #ffd166; background: #ffd16615; }
+    .hint-label-2 { color: #ff9900; background: #ff990015; }
+    .hint-label-3 { color: #00ff41; background: #00ff4115; }
+
+    .hint-text { color: #999; margin: 4px 0; }
+    .hint-text code {
+      background: #0a0a1a;
+      border: 1px solid #222;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      color: #00d4ff;
+    }
+
+    .hint-cmd {
+      display: block;
+      background: #0a0a1a;
+      border: 1px solid #222;
+      border-radius: 4px;
+      padding: 6px 10px;
+      margin: 6px 0;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      color: #00ff41;
+      white-space: pre-wrap;
+      position: relative;
+    }
+    .hint-cmd::before {
+      content: 'SOLUTION';
+      position: absolute;
+      top: -8px; right: 6px;
+      font-size: 8px;
+      background: #0a0a1a;
+      color: #555;
+      padding: 0 4px;
+      letter-spacing: 1px;
+      font-family: 'Segoe UI', sans-serif;
+    }
+
+    .hint-note {
+      background: #1a1a0e;
+      border-left: 3px solid #ff9900;
+      padding: 6px 10px;
+      margin: 6px 0;
+      font-size: 11px;
+      color: #cc9900;
+      border-radius: 0 4px 4px 0;
+    }
+
+    /* Terminal */
+    .overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; }
+    .overlay.active { display: flex; }
+    .terminal-window { background: #0d0d0d; border: 1px solid #00d4ff; border-radius: 8px; width: 740px; max-width: 95vw; height: 500px; display: flex; flex-direction: column; box-shadow: 0 0 40px rgba(0,212,255,0.3); }
+    .terminal-header { background: #080808; border-bottom: 1px solid #00d4ff; padding: 8px 16px; display: flex; align-items: center; justify-content: space-between; border-radius: 8px 8px 0 0; }
+    .terminal-header span { color: #00d4ff; font-size: 13px; font-weight: bold; }
+    .close-btn { background: #e74c3c; border: none; color: white; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; font-size: 12px; line-height: 20px; text-align: center; }
+    .terminal-output { flex: 1; overflow-y: auto; padding: 12px; font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6; color: #00ff41; white-space: pre-wrap; }
+    .terminal-output .error { color: #ff6b6b; } .terminal-output .info { color: #cccccc; }
+    .terminal-input-row { display: flex; align-items: center; padding: 8px 12px; border-top: 1px solid #222; font-family: 'Courier New', monospace; font-size: 13px; }
+    .prompt { color: #00d4ff; white-space: nowrap; margin-right: 4px; }
+    .terminal-input-row input { flex: 1; background: transparent; border: none; outline: none; color: #00ff41; font-family: 'Courier New', monospace; font-size: 13px; }
+
+    /* Success modal */
+    .success-modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 200; align-items: center; justify-content: center; }
+    .success-modal.active { display: flex; }
+    .success-box { background: #111111; border: 2px solid #00ff41; border-radius: 12px; padding: 40px; text-align: center; max-width: 420px; }
+    .success-box h2 { color: #00ff41; margin-bottom: 12px; }
+    .success-box p { color: #888; font-size: 14px; margin-bottom: 20px; }
+    .success-box a { display: inline-block; background: #00d4ff; color: #080808; padding: 10px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; }
+
+    /* Footer */
+    footer { background: #111111; border-top: 1px solid #1a1a1a; padding: 6px 24px; display: flex; gap: 20px; font-size: 11px; color: #666; flex-wrap: wrap; }
+    footer .status-item span { color: #00d4ff; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="header-left">
+    <h1>Lab 1: InterVLAN Routing — Router-on-a-Stick</h1>
+    <p>Click any device to open its CLI</p>
+  </div>
+  <div class="header-right">
+    <a class="nav-back" href="index.html">&larr; Back to Labs</a>
+  </div>
+</header>
+
+<div class="main-area">
+<div class="topology" id="topology">
+  <svg class="lines" id="svg-lines"></svg>
+  <!-- PC1 -->
+  <div class="device" id="dev-pc1" style="left:6%;top:20%;" onclick="openDevice('pc1')">
+    <div class="device-icon"><svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="4" width="36" height="26" rx="2" fill="#1a1a2a" stroke="#2db6e8" stroke-width="1.5"/><rect x="10" y="8" width="28" height="18" fill="#0d1117"/><rect x="14" y="32" width="20" height="3" fill="#2db6e8" rx="1"/><rect x="10" y="36" width="28" height="2" fill="#1578a7" rx="1"/><circle cx="24" cy="31" r="1" fill="#2db6e8"/></svg></div>
+    <div class="device-label">PC1</div>
+    <div class="device-sublabel">VLAN 10 | 192.168.10.10</div>
+  </div>
+  <!-- PC2 -->
+  <div class="device" id="dev-pc2" style="left:6%;top:60%;" onclick="openDevice('pc2')">
+    <div class="device-icon"><svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="4" width="36" height="26" rx="2" fill="#1a1a2a" stroke="#2db6e8" stroke-width="1.5"/><rect x="10" y="8" width="28" height="18" fill="#0d1117"/><rect x="14" y="32" width="20" height="3" fill="#2db6e8" rx="1"/><rect x="10" y="36" width="28" height="2" fill="#1578a7" rx="1"/><circle cx="24" cy="31" r="1" fill="#2db6e8"/></svg></div>
+    <div class="device-label">PC2</div>
+    <div class="device-sublabel">VLAN 20 | 192.168.20.10</div>
+  </div>
+  <!-- SW1 -->
+  <div class="device" id="dev-sw1" style="left:40%;top:38%;" onclick="openDevice('sw1')">
+    <div class="device-icon"><svg width="56" height="48" viewBox="0 0 56 48" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="14" width="38" height="28" fill="#1a8ec7" stroke="#0d5a8a" stroke-width="1"/><polygon points="4,14 18,4 56,4 42,14" fill="#2db6e8" stroke="#0d5a8a" stroke-width="1"/><polygon points="42,14 56,4 56,32 42,42" fill="#1578a7" stroke="#0d5a8a" stroke-width="1"/><line x1="12" y1="28" x2="22" y2="28" stroke="white" stroke-width="2.5"/><polygon points="24,28 19,25 19,31" fill="white"/><line x1="34" y1="28" x2="24" y2="28" stroke="white" stroke-width="2.5"/><polygon points="22,28 27,25 27,31" fill="white"/></svg></div>
+    <div class="device-label">SW1</div>
+    <div class="device-sublabel" id="sw1-label">Cisco 2960</div>
+  </div>
+  <!-- R1 -->
+  <div class="device" id="dev-r1" style="left:74%;top:38%;" onclick="openDevice('r1')">
+    <div class="device-icon"><svg width="56" height="40" viewBox="0 0 56 40" xmlns="http://www.w3.org/2000/svg"><ellipse cx="28" cy="30" rx="26" ry="10" fill="#1578a7" stroke="#0d5a8a" stroke-width="1"/><rect x="2" y="16" width="52" height="14" fill="#1a8ec7"/><line x1="2" y1="16" x2="2" y2="30" stroke="#0d5a8a" stroke-width="1"/><line x1="54" y1="16" x2="54" y2="30" stroke="#0d5a8a" stroke-width="1"/><ellipse cx="28" cy="16" rx="26" ry="10" fill="#2db6e8" stroke="#0d5a8a" stroke-width="1"/><line x1="28" y1="13" x2="28" y2="7" stroke="white" stroke-width="2.5"/><polygon points="28,5 25,9 31,9" fill="white"/><line x1="28" y1="19" x2="28" y2="25" stroke="white" stroke-width="2.5"/><polygon points="28,27 25,23 31,23" fill="white"/><line x1="24" y1="16" x2="10" y2="16" stroke="white" stroke-width="2.5"/><polygon points="8,16 12,13 12,19" fill="white"/><line x1="32" y1="16" x2="46" y2="16" stroke="white" stroke-width="2.5"/><polygon points="48,16 44,13 44,19" fill="white"/></svg></div>
+    <div class="device-label">R1</div>
+    <div class="device-sublabel" id="r1-label">Cisco ISR</div>
+  </div>
+</div>
+
+<!-- RIGHT PANEL — Scenario + Tasks -->
+<div class="right-panel" id="right-panel">
+  <div class="panel-resize-handle" id="panel-resize-handle"></div>
+  <div class="panel-header">Lab 1 — InterVLAN Routing</div>
+
+  <div class="panel-scroll">
+  <!-- SCENARIO -->
+  <div class="scenario-section">
+    <div class="scenario-label">Scenario</div>
+    <div class="scenario-text">
+      You've been assigned to set up the new sales and HR departments at <strong style="color:#e0e0e0;">NovaTech Inc</strong>. Both teams share the same switch (SW1) but need to be on separate networks for security. The sales team needs VLAN 10 and the HR team needs VLAN 20. Since both VLANs need internet access through R1, you'll need to configure a trunk link and router subinterfaces — the classic <em style="color:#ddd;">router-on-a-stick</em> setup.
+    </div>
+    <table class="ip-table">
+      <tr><th>Device</th><th>Interface</th><th>IP / Config</th><th>Details</th></tr>
+      <tr><td class="device-col">PC1</td><td>Eth0</td><td>192.168.10.10/24</td><td>GW: 192.168.10.1</td></tr>
+      <tr><td class="device-col">PC2</td><td>Eth0</td><td>192.168.20.10/24</td><td>GW: 192.168.20.1</td></tr>
+      <tr><td class="device-col">SW1</td><td>Fa0/1</td><td>Access VLAN 10</td><td>To PC1</td></tr>
+      <tr><td class="device-col">SW1</td><td>Fa0/2</td><td>Access VLAN 20</td><td>To PC2</td></tr>
+      <tr><td class="device-col">SW1</td><td>Fa0/24</td><td>Trunk (802.1Q)</td><td>To R1</td></tr>
+      <tr><td class="device-col">R1</td><td>Fa0/0.10</td><td>192.168.10.1/24</td><td>VLAN 10 gateway</td></tr>
+      <tr><td class="device-col">R1</td><td>Fa0/0.20</td><td>192.168.20.1/24</td><td>VLAN 20 gateway</td></tr>
+    </table>
+    <div class="scenario-objective">Mission: Configure VLANs, access ports, trunk, and router subinterfaces so PC1 and PC2 can ping each other through R1.</div>
+  </div>
+
+  <div class="tasks-divider">Tasks</div>
+  <div class="panel-body" id="panel-body">
+
+    <!-- TASK 1 -->
+    <div class="task-block" id="task1">
+      <div class="task-header">
+        <div class="task-status" id="status1"><span class="status-icon icon-check">&#10003;</span><span class="status-icon icon-x">&#9679;</span></div>
+        <div class="task-number">1</div>
+        <div class="task-title">Create VLAN 10 (SALES) and VLAN 20 (HR) on SW1</div>
+        <button class="hint-btn" onclick="cycleHint(1)" title="Show hint">
+          &#128161;
+          <div class="hint-dots"><span class="hint-dot"></span><span class="hint-dot"></span><span class="hint-dot"></span></div>
+        </button>
+      </div>
+      <div class="hint-content" id="hint1">
+        <div class="hint-level" id="hint1-1">
+          <div class="hint-label hint-label-1">Nudge</div>
+          <p class="hint-text">You need: <code>vlan</code> and <code>name</code> commands in global config mode.</p>
+        </div>
+        <div class="hint-level" id="hint1-2">
+          <div class="hint-label hint-label-2">More Detail</div>
+          <p class="hint-text">On SW1, enter privileged EXEC (<code>enable</code>), then <code>configure terminal</code>. Use <code>vlan 10</code> to create VLAN 10, <code>name SALES</code> to name it, then <code>exit</code>. Repeat for VLAN 20 with name HR.</p>
+        </div>
+        <div class="hint-level" id="hint1-3">
+          <div class="hint-label hint-label-3">Full Solution</div>
+          <div class="hint-cmd">enable
+configure terminal
+vlan 10
+name SALES
+exit
+vlan 20
+name HR
+exit</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TASK 2 -->
+    <div class="task-block" id="task2">
+      <div class="task-header">
+        <div class="task-status" id="status2"><span class="status-icon icon-check">&#10003;</span><span class="status-icon icon-x">&#9679;</span></div>
+        <div class="task-number">2</div>
+        <div class="task-title">Assign Fa0/1 as access port in VLAN 10 and Fa0/2 in VLAN 20</div>
+        <button class="hint-btn" onclick="cycleHint(2)" title="Show hint">
+          &#128161;
+          <div class="hint-dots"><span class="hint-dot"></span><span class="hint-dot"></span><span class="hint-dot"></span></div>
+        </button>
+      </div>
+      <div class="hint-content" id="hint2">
+        <div class="hint-level" id="hint2-1">
+          <div class="hint-label hint-label-1">Nudge</div>
+          <p class="hint-text">Commands: <code>interface</code>, <code>switchport mode access</code>, <code>switchport access vlan</code></p>
+        </div>
+        <div class="hint-level" id="hint2-2">
+          <div class="hint-label hint-label-2">More Detail</div>
+          <p class="hint-text">Enter each interface, set it to access mode, then assign the VLAN. <code>Fa0/1</code> connects to PC1 (VLAN 10), <code>Fa0/2</code> connects to PC2 (VLAN 20). Access ports carry only one VLAN's traffic.</p>
+        </div>
+        <div class="hint-level" id="hint2-3">
+          <div class="hint-label hint-label-3">Full Solution</div>
+          <div class="hint-cmd">interface fa0/1
+switchport mode access
+switchport access vlan 10
+exit
+interface fa0/2
+switchport mode access
+switchport access vlan 20
+exit</div>
+          <div class="hint-note">VLANs must exist before you can assign ports to them. If you get an error, create the VLANs first (Task 1).</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TASK 3 -->
+    <div class="task-block" id="task3">
+      <div class="task-header">
+        <div class="task-status" id="status3"><span class="status-icon icon-check">&#10003;</span><span class="status-icon icon-x">&#9679;</span></div>
+        <div class="task-number">3</div>
+        <div class="task-title">Configure Fa0/24 as an 802.1Q trunk port on SW1</div>
+        <button class="hint-btn" onclick="cycleHint(3)" title="Show hint">
+          &#128161;
+          <div class="hint-dots"><span class="hint-dot"></span><span class="hint-dot"></span><span class="hint-dot"></span></div>
+        </button>
+      </div>
+      <div class="hint-content" id="hint3">
+        <div class="hint-level" id="hint3-1">
+          <div class="hint-label hint-label-1">Nudge</div>
+          <p class="hint-text">You need: <code>interface</code> and <code>switchport mode trunk</code></p>
+        </div>
+        <div class="hint-level" id="hint3-2">
+          <div class="hint-label hint-label-2">More Detail</div>
+          <p class="hint-text">The link between SW1 (Fa0/24) and R1 must carry multiple VLANs. Set the port to trunk mode so it uses 802.1Q tagging.</p>
+        </div>
+        <div class="hint-level" id="hint3-3">
+          <div class="hint-label hint-label-3">Full Solution</div>
+          <div class="hint-cmd">interface fa0/24
+switchport mode trunk
+end</div>
+          <div class="hint-note">Trunk ports use 802.1Q tagging to carry traffic for multiple VLANs over a single physical link.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TASK 4 -->
+    <div class="task-block" id="task4">
+      <div class="task-header">
+        <div class="task-status" id="status4"><span class="status-icon icon-check">&#10003;</span><span class="status-icon icon-x">&#9679;</span></div>
+        <div class="task-number">4</div>
+        <div class="task-title">Create subinterface Fa0/0.10 on R1 — encapsulation dot1Q 10, IP 192.168.10.1/24</div>
+        <button class="hint-btn" onclick="cycleHint(4)" title="Show hint">
+          &#128161;
+          <div class="hint-dots"><span class="hint-dot"></span><span class="hint-dot"></span><span class="hint-dot"></span></div>
+        </button>
+      </div>
+      <div class="hint-content" id="hint4">
+        <div class="hint-level" id="hint4-1">
+          <div class="hint-label hint-label-1">Nudge</div>
+          <p class="hint-text">Commands: <code>interface fa0/0.10</code>, <code>encapsulation dot1q</code>, <code>ip address</code></p>
+        </div>
+        <div class="hint-level" id="hint4-2">
+          <div class="hint-label hint-label-2">More Detail</div>
+          <p class="hint-text">On R1, create subinterface <strong style="color:#e0e0e0;">Fa0/0.10</strong>. The <code>encapsulation dot1q 10</code> command maps it to VLAN 10. Then assign IP <strong style="color:#e0e0e0;">192.168.10.1</strong> with mask <strong style="color:#e0e0e0;">255.255.255.0</strong> — this becomes the default gateway for VLAN 10.</p>
+        </div>
+        <div class="hint-level" id="hint4-3">
+          <div class="hint-label hint-label-3">Full Solution</div>
+          <div class="hint-cmd">enable
+configure terminal
+interface fa0/0.10
+encapsulation dot1q 10
+ip address 192.168.10.1 255.255.255.0
+exit</div>
+          <div class="hint-note">The subinterface number (.10) is just a label — the <code>encapsulation dot1q</code> command is what actually maps it to VLAN 10.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TASK 5 -->
+    <div class="task-block" id="task5">
+      <div class="task-header">
+        <div class="task-status" id="status5"><span class="status-icon icon-check">&#10003;</span><span class="status-icon icon-x">&#9679;</span></div>
+        <div class="task-number">5</div>
+        <div class="task-title">Create subinterface Fa0/0.20 on R1 — encapsulation dot1Q 20, IP 192.168.20.1/24</div>
+        <button class="hint-btn" onclick="cycleHint(5)" title="Show hint">
+          &#128161;
+          <div class="hint-dots"><span class="hint-dot"></span><span class="hint-dot"></span><span class="hint-dot"></span></div>
+        </button>
+      </div>
+      <div class="hint-content" id="hint5">
+        <div class="hint-level" id="hint5-1">
+          <div class="hint-label hint-label-1">Nudge</div>
+          <p class="hint-text">Same pattern as Task 4 — different VLAN and IP.</p>
+        </div>
+        <div class="hint-level" id="hint5-2">
+          <div class="hint-label hint-label-2">More Detail</div>
+          <p class="hint-text">Create <strong style="color:#e0e0e0;">Fa0/0.20</strong>, encapsulate for VLAN 20, and assign IP <strong style="color:#e0e0e0;">192.168.20.1/24</strong>.</p>
+        </div>
+        <div class="hint-level" id="hint5-3">
+          <div class="hint-label hint-label-3">Full Solution</div>
+          <div class="hint-cmd">interface fa0/0.20
+encapsulation dot1q 20
+ip address 192.168.20.1 255.255.255.0
+exit</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TASK 6 -->
+    <div class="task-block" id="task6">
+      <div class="task-header">
+        <div class="task-status" id="status6"><span class="status-icon icon-check">&#10003;</span><span class="status-icon icon-x">&#9679;</span></div>
+        <div class="task-number">6</div>
+        <div class="task-title">Bring up the physical interface Fa0/0 on R1</div>
+        <button class="hint-btn" onclick="cycleHint(6)" title="Show hint">
+          &#128161;
+          <div class="hint-dots"><span class="hint-dot"></span><span class="hint-dot"></span><span class="hint-dot"></span></div>
+        </button>
+      </div>
+      <div class="hint-content" id="hint6">
+        <div class="hint-level" id="hint6-1">
+          <div class="hint-label hint-label-1">Nudge</div>
+          <p class="hint-text">You need: <code>interface fa0/0</code> and <code>no shutdown</code></p>
+        </div>
+        <div class="hint-level" id="hint6-2">
+          <div class="hint-label hint-label-2">More Detail</div>
+          <p class="hint-text">Subinterfaces inherit the up/down state of the physical interface. You must bring up <strong style="color:#e0e0e0;">Fa0/0</strong> for the subinterfaces (.10 and .20) to function.</p>
+        </div>
+        <div class="hint-level" id="hint6-3">
+          <div class="hint-label hint-label-3">Full Solution</div>
+          <div class="hint-cmd">interface fa0/0
+no shutdown
+end</div>
+          <div class="hint-note">Always remember to bring up the parent physical interface — subinterfaces won't work without it.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TASK 7 -->
+    <div class="task-block" id="task7">
+      <div class="task-header">
+        <div class="task-status" id="status7"><span class="status-icon icon-check">&#10003;</span><span class="status-icon icon-x">&#9679;</span></div>
+        <div class="task-number">7</div>
+        <div class="task-title">Verify end-to-end: ping 192.168.20.10 from PC1</div>
+        <button class="hint-btn" onclick="cycleHint(7)" title="Show hint">
+          &#128161;
+          <div class="hint-dots"><span class="hint-dot"></span><span class="hint-dot"></span><span class="hint-dot"></span></div>
+        </button>
+      </div>
+      <div class="hint-content" id="hint7">
+        <div class="hint-level" id="hint7-1">
+          <div class="hint-label hint-label-1">Nudge</div>
+          <p class="hint-text">Click on <code>PC1</code> and use the <code>ping</code> command.</p>
+        </div>
+        <div class="hint-level" id="hint7-2">
+          <div class="hint-label hint-label-2">More Detail</div>
+          <p class="hint-text">Open PC1's command prompt. Ping PC2's IP (<strong style="color:#e0e0e0;">192.168.20.10</strong>). If all VLANs, access ports, trunk, and subinterfaces are correctly configured, the ping should succeed.</p>
+        </div>
+        <div class="hint-level" id="hint7-3">
+          <div class="hint-label hint-label-3">Full Solution</div>
+          <div class="hint-cmd">ping 192.168.20.10</div>
+          <p class="hint-text">Expected: 4 replies from 192.168.20.10. If it fails, verify with <code>show vlan brief</code> on SW1 and <code>show ip interface brief</code> on R1.</p>
+          <div class="hint-note">The traffic path: PC1 -> SW1 Fa0/1 (access VLAN 10) -> SW1 Fa0/24 (trunk) -> R1 Fa0/0.10 -> R1 routes to Fa0/0.20 -> SW1 trunk -> SW1 Fa0/2 (access VLAN 20) -> PC2.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  </div><!-- end panel-scroll -->
+  <div class="panel-footer" id="panel-footer">Tasks auto-complete as you configure | Click the lightbulb for hints</div>
+</div>
+</div>
+
+<!-- Terminal overlay -->
+<div class="overlay" id="overlay">
+  <div class="terminal-window">
+    <div class="terminal-header"><span id="term-title">Device CLI</span><button class="close-btn" onclick="closeTerminal()">x</button></div>
+    <div class="terminal-output" id="term-output"></div>
+    <div class="terminal-input-row"><span class="prompt" id="term-prompt">&gt;</span><input type="text" id="term-input" autocomplete="off" spellcheck="false" onkeydown="handleKey(event)"></div>
+  </div>
+</div>
+
+<!-- Success modal -->
+<div class="success-modal" id="successModal">
+  <div class="success-box">
+    <h2>Lab Complete!</h2>
+    <p>InterVLAN routing is working. PC1 (VLAN 10) and PC2 (VLAN 20) can now communicate through the router-on-a-stick configuration at NovaTech Inc.</p>
+    <a href="index.html">Back to Lab Portal</a>
+  </div>
+</div>
+
+<footer>
+  <div class="status-item">SW1 VLANs: <span id="stat-vlans">-</span></div>
+  <div class="status-item">Trunk: <span id="stat-trunk">-</span></div>
+  <div class="status-item">R1 Subs: <span id="stat-subs">-</span></div>
+  <div class="status-item">Routing: <span id="stat-routing">inactive</span></div>
+</footer>
+
+<script>
+// ===== HINT SYSTEM =====
+const hintLevels = {};
+function cycleHint(taskNum) {
+  const current = hintLevels[taskNum] || 0;
+  const next = current >= 3 ? 0 : current + 1;
+  hintLevels[taskNum] = next;
+
+  const container = document.getElementById('hint' + taskNum);
+  const btn = container.parentElement.querySelector('.hint-btn');
+  const dots = btn.querySelectorAll('.hint-dot');
+
+  for (let i = 1; i <= 3; i++) {
+    const lvl = document.getElementById('hint' + taskNum + '-' + i);
+    lvl.classList.remove('visible');
+  }
+
+  btn.className = 'hint-btn';
+  dots.forEach(d => d.classList.remove('active'));
+
+  if (next === 0) {
+    container.classList.remove('visible');
+  } else {
+    container.classList.add('visible');
+    document.getElementById('hint' + taskNum + '-' + next).classList.add('visible');
+    btn.classList.add('level' + next);
+    for (let i = 0; i < next; i++) dots[i].classList.add('active');
+  }
+}
+
+// ===== DEVICE SIMULATION =====
+const devices = {
+  sw1: {
+    hostname: 'SW1', type: 'switch', mode: 'user', currentIface: null, currentVlan: null,
+    vlans: {}, ports: {}
+  },
+  r1: {
+    hostname: 'R1', type: 'router', mode: 'user', currentIface: null,
+    interfaces: {}
+  },
+  pc1: { hostname: 'PC1', type: 'pc', ip: '192.168.10.10', mask: '255.255.255.0', gateway: '192.168.10.1' },
+  pc2: { hostname: 'PC2', type: 'pc', ip: '192.168.20.10', mask: '255.255.255.0', gateway: '192.168.20.1' }
+};
+let activeDevice = null, history = [], histIdx = -1;
+
+function getPrompt(dev) {
+  const d = devices[dev];
+  if (d.type === 'pc') return 'C:\\>';
+  const h = d.hostname;
+  if (d.mode === 'user') return h + '>';
+  if (d.mode === 'enable') return h + '#';
+  if (d.mode === 'config') return h + '(config)#';
+  if (d.mode === 'iface') return h + '(config-if)#';
+  if (d.mode === 'vlan') return h + '(config-vlan)#';
+  return h + '>';
+}
+
+function openDevice(dev) {
+  activeDevice = dev;
+  history = [];
+  histIdx = -1;
+  document.getElementById('overlay').classList.add('active');
+  const d = devices[dev];
+  const out = document.getElementById('term-output');
+  out.innerHTML = '';
+  if (d.type === 'pc') {
+    document.getElementById('term-title').textContent = d.hostname + ' — Command Prompt';
+    printLine(d.hostname + ' [' + d.ip + ']\nDefault Gateway: ' + d.gateway + '\n\nCommands: ping <ip>, tracert <ip>, ipconfig\n', 'info');
+  } else if (d.type === 'switch') {
+    document.getElementById('term-title').textContent = d.hostname + ' — Cisco 2960 Switch';
+    printLine('Cisco IOS Software, Version 15.0 — Switch ' + d.hostname + '\nType "enable" to begin.\n', 'info');
+  } else {
+    document.getElementById('term-title').textContent = d.hostname + ' — Cisco ISR Router';
+    printLine('Cisco IOS Software, Version 15.1 — Router ' + d.hostname + '\nType "enable" to begin.\n', 'info');
+  }
+  updatePrompt();
+  document.getElementById('term-input').focus();
+}
+
+function closeTerminal() {
+  document.getElementById('overlay').classList.remove('active');
+  activeDevice = null;
+  updateStatus();
+}
+
+function printLine(t, cls = '') {
+  const out = document.getElementById('term-output');
+  const s = document.createElement('span');
+  if (cls) s.className = cls;
+  s.textContent = t + '\n';
+  out.appendChild(s);
+  out.scrollTop = out.scrollHeight;
+}
+
+function updatePrompt() {
+  document.getElementById('term-prompt').textContent = getPrompt(activeDevice) + ' ';
+}
+
+function handleKey(e) {
+  const input = document.getElementById('term-input');
+  if (e.key === 'Enter') {
+    const cmd = input.value.trim();
+    printLine(getPrompt(activeDevice) + ' ' + cmd);
+    if (cmd) { history.unshift(cmd); histIdx = -1; }
+    processCmd(activeDevice, cmd);
+    input.value = '';
+    updatePrompt();
+  } else if (e.key === 'ArrowUp') {
+    if (histIdx < history.length - 1) { histIdx++; input.value = history[histIdx]; }
+    e.preventDefault();
+  } else if (e.key === 'ArrowDown') {
+    if (histIdx > 0) { histIdx--; input.value = history[histIdx]; }
+    else { histIdx = -1; input.value = ''; }
+    e.preventDefault();
+  }
+}
+
+// ===== PING / TRACERT / REACHABILITY =====
+function canReach(srcIp, dstIp) {
+  if (srcIp === dstIp) return { reachable: true, hops: [] };
+
+  const sw = devices.sw1;
+  const r = devices.r1;
+
+  // Check all required config
+  const vlan10 = !!sw.vlans[10];
+  const vlan20 = !!sw.vlans[20];
+  const fa01 = sw.ports['fa0/1'];
+  const fa02 = sw.ports['fa0/2'];
+  const access10 = !!(fa01 && fa01.mode === 'access' && fa01.vlan == 10);
+  const access20 = !!(fa02 && fa02.mode === 'access' && fa02.vlan == 20);
+  const hasTrunk = !!(sw.ports['fa0/24'] && sw.ports['fa0/24'].mode === 'trunk');
+  const sub10 = r.interfaces['fa0/0.10'];
+  const sub20 = r.interfaces['fa0/0.20'];
+  const sub10OK = !!(sub10 && sub10.encap === 10 && sub10.ip === '192.168.10.1' && sub10.mask === '255.255.255.0');
+  const sub20OK = !!(sub20 && sub20.encap === 20 && sub20.ip === '192.168.20.1' && sub20.mask === '255.255.255.0');
+  const fa00 = r.interfaces['fa0/0'];
+  const physUp = !!(fa00 && fa00.up);
+
+  const allGood = vlan10 && vlan20 && access10 && access20 && hasTrunk && sub10OK && sub20OK && physUp;
+
+  // Determine source and dest VLANs
+  const srcNet = srcIp.split('.').slice(0, 3).join('.');
+  const dstNet = dstIp.split('.').slice(0, 3).join('.');
+
+  // PC to its own gateway (router subinterface)
+  if (srcNet === dstNet) {
+    // Same VLAN — need VLAN created, port assigned, trunk, and matching subinterface up
+    if (srcNet === '192.168.10') {
+      if (vlan10 && access10 && hasTrunk && sub10OK && physUp) return { reachable: true, hops: [] };
+    } else if (srcNet === '192.168.20') {
+      if (vlan20 && access20 && hasTrunk && sub20OK && physUp) return { reachable: true, hops: [] };
+    }
+    return { reachable: false, hops: [] };
+  }
+
+  // Cross-VLAN requires everything
+  if (allGood) {
+    // PC1 -> PC2 path goes through R1
+    if (srcNet === '192.168.10' && dstNet === '192.168.20') {
+      return { reachable: true, hops: ['192.168.10.1'] };
+    }
+    if (srcNet === '192.168.20' && dstNet === '192.168.10') {
+      return { reachable: true, hops: ['192.168.20.1'] };
+    }
+  }
+
+  return { reachable: false, hops: [] };
+}
+
+function doPing(srcDev, dstIp) {
+  const src = devices[srcDev];
+  const srcIp = src.type === 'pc' ? src.ip : null;
+  if (!srcIp) { printLine('% No active interface.', 'error'); return; }
+
+  const result = canReach(srcIp, dstIp);
+  printLine('\nPinging ' + dstIp + ' with 32 bytes of data:');
+  if (result.reachable) {
+    for (let i = 0; i < 4; i++) printLine('Reply from ' + dstIp + ': bytes=32 time<1ms TTL=128');
+    printLine('\nPing statistics for ' + dstIp + ':\n    Packets: Sent = 4, Received = 4, Lost = 0 (0% loss)');
+    // Check if this completes task 7
+    if (srcDev === 'pc1' && dstIp === '192.168.20.10') pingSuccess = true;
+    if (srcDev === 'pc2' && dstIp === '192.168.10.10') pingSuccess = true;
+  } else {
+    for (let i = 0; i < 4; i++) printLine('Request timed out.', 'error');
+    printLine('\nPing statistics for ' + dstIp + ':\n    Packets: Sent = 4, Received = 0, Lost = 4 (100% loss)', 'error');
+  }
+}
+
+function doTracert(srcDev, dstIp) {
+  const src = devices[srcDev];
+  const srcIp = src.type === 'pc' ? src.ip : null;
+  if (!srcIp) { printLine('% No active interface.', 'error'); return; }
+
+  const result = canReach(srcIp, dstIp);
+  printLine('\nTracing route to ' + dstIp + ' over a maximum of 30 hops:\n');
+  if (result.reachable) {
+    let hop = 1;
+    for (const ip of result.hops) {
+      printLine('  ' + hop + '    <1 ms    <1 ms    <1 ms    ' + ip);
+      hop++;
+    }
+    printLine('  ' + hop + '    <1 ms    <1 ms    <1 ms    ' + dstIp);
+    printLine('\nTrace complete.');
+  } else {
+    printLine('  1     *        *        *     Request timed out.', 'error');
+    printLine('  2     *        *        *     Request timed out.', 'error');
+    printLine('  3     *        *        *     Request timed out.', 'error');
+    printLine('\nUnable to reach destination.', 'error');
+  }
+}
+
+let pingSuccess = false;
+
+// ===== SHOW COMMAND NORMALIZER =====
+function normalizeShow(cmd) {
+  if (!cmd.startsWith('sh')) return null;
+  cmd = cmd.replace(/^do\s+/, '');
+
+  const patterns = [
+    [/^sh(?:ow)? ru(?:n(?:ning-config)?)?$/, 'show running-config'],
+    [/^sh(?:ow)? vl(?:an)? br(?:ief)?$/, 'show vlan brief'],
+    [/^sh(?:ow)? int(?:erfaces?)? tr(?:unk)?$/, 'show interfaces trunk'],
+    [/^sh(?:ow)? int(?:erfaces)?$/, 'show interfaces'],
+    [/^sh(?:ow)? mac(?:-|\s)add(?:ress)?(?:-|\s)?ta(?:ble)?$/, 'show mac address-table'],
+    [/^sh(?:ow)? ip int(?:erface)? br(?:ief)?$/, 'show ip interface brief'],
+    [/^sh(?:ow)? ip ro(?:ute)?$/, 'show ip route'],
+    [/^sh(?:ow)? ip int(?:erface)?$/, 'show ip interface'],
+    [/^sh(?:ow)? ver(?:sion)?$/, 'show version'],
+  ];
+  for (const [re, full] of patterns) {
+    if (re.test(cmd)) return full;
+  }
+  if (/^sh(?:ow)?\s/.test(cmd)) return 'unknown-show';
+  return null;
+}
+
+// Expand common Cisco shorthand for config-mode commands to canonical form.
+function normalizeConfig(cmd) {
+  // interface selection: int f0/1, int fa0/1, int gi0/0.10, int g0/0, int fastethernet0/1, etc.
+  let m = cmd.match(/^(?:int|interface)\s+([a-z]+)?\s*(\d+(?:\/\d+){0,2}(?:\.\d+)?)$/);
+  if (m) {
+    const prefix = (m[1] || '').toLowerCase();
+    const rest = m[2];
+    let canon;
+    if (!prefix) canon = '';
+    else if (/^(f|fa|fas|fast|fastethernet)$/.test(prefix)) canon = 'fa';
+    else if (/^(g|gi|gig|gigabitethernet)$/.test(prefix)) canon = 'gi';
+    else if (/^(te|ten|tengigabitethernet)$/.test(prefix)) canon = 'te';
+    else if (/^(e|et|eth|ethernet)$/.test(prefix)) canon = 'eth';
+    else if (/^(lo|loop|loopback)$/.test(prefix)) canon = 'lo';
+    else if (/^(vl|vlan)$/.test(prefix)) canon = 'vlan';
+    else canon = prefix;
+    return 'interface ' + canon + rest;
+  }
+  // mode/meta
+  cmd = cmd.replace(/^ena$/, 'enable');
+  cmd = cmd.replace(/^conf(?:i(?:g(?:u(?:r(?:e)?)?)?)?)?\s+t(?:e(?:r(?:m(?:i(?:n(?:a(?:l)?)?)?)?)?)?)?$/, 'configure terminal');
+  cmd = cmd.replace(/^ex(?:it)?$/, 'exit');
+  cmd = cmd.replace(/^host(?:n(?:a(?:m(?:e)?)?)?)?\s+(\S+)$/, 'hostname $1');
+  // switchport
+  cmd = cmd.replace(/^sw(?:i(?:t(?:c(?:h(?:p(?:o(?:r(?:t)?)?)?)?)?)?)?)?\s+mo(?:d(?:e)?)?\s+tr(?:u(?:n(?:k)?)?)?$/, 'switchport mode trunk');
+  cmd = cmd.replace(/^sw(?:i(?:t(?:c(?:h(?:p(?:o(?:r(?:t)?)?)?)?)?)?)?)?\s+mo(?:d(?:e)?)?\s+ac(?:c(?:e(?:s(?:s)?)?)?)?$/, 'switchport mode access');
+  cmd = cmd.replace(/^sw(?:i(?:t(?:c(?:h(?:p(?:o(?:r(?:t)?)?)?)?)?)?)?)?\s+ac(?:c(?:e(?:s(?:s)?)?)?)?\s+vl(?:a(?:n)?)?\s+(\d+)$/, 'switchport access vlan $1');
+  cmd = cmd.replace(/^sw(?:i(?:t(?:c(?:h(?:p(?:o(?:r(?:t)?)?)?)?)?)?)?)?\s+tr(?:u(?:n(?:k)?)?)?\s+en(?:c(?:a(?:p(?:s(?:u(?:l(?:a(?:t(?:i(?:o(?:n)?)?)?)?)?)?)?)?)?)?)?\s+dot1q$/, 'switchport trunk encapsulation dot1q');
+  cmd = cmd.replace(/^sw(?:i(?:t(?:c(?:h(?:p(?:o(?:r(?:t)?)?)?)?)?)?)?)?\s+tr(?:u(?:n(?:k)?)?)?\s+nat(?:i(?:v(?:e)?)?)?\s+vl(?:a(?:n)?)?\s+(\d+)$/, 'switchport trunk native vlan $1');
+  cmd = cmd.replace(/^sw(?:i(?:t(?:c(?:h(?:p(?:o(?:r(?:t)?)?)?)?)?)?)?)?\s+tr(?:u(?:n(?:k)?)?)?\s+al(?:l(?:o(?:w(?:e(?:d)?)?)?)?)?\s+vl(?:a(?:n)?)?\s+(.+)$/, 'switchport trunk allowed vlan $1');
+  // encapsulation dot1q N
+  cmd = cmd.replace(/^enc(?:a(?:p(?:s(?:u(?:l(?:a(?:t(?:i(?:o(?:n)?)?)?)?)?)?)?)?)?)?\s+dot1q\s+(\d+)$/, 'encapsulation dot1q $1');
+  // ip address A M
+  cmd = cmd.replace(/^ip\s+add(?:r(?:e(?:s(?:s)?)?)?)?\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+\.\d+\.\d+\.\d+)$/, 'ip address $1 $2');
+  // no shut / shut / description
+  cmd = cmd.replace(/^no\s+sh(?:u(?:t(?:d(?:o(?:w(?:n)?)?)?)?)?)?$/, 'no shutdown');
+  cmd = cmd.replace(/^sh(?:u(?:t(?:d(?:o(?:w(?:n)?)?)?)?)?)?$/, 'shutdown');
+  cmd = cmd.replace(/^desc(?:r(?:i(?:p(?:t(?:i(?:o(?:n)?)?)?)?)?)?)?\s+(.+)$/, 'description $1');
+  // OSPF
+  cmd = cmd.replace(/^rou(?:t(?:e(?:r)?)?)?\s+os(?:p(?:f)?)?\s+(\d+)$/, 'router ospf $1');
+  cmd = cmd.replace(/^net(?:w(?:o(?:r(?:k)?)?)?)?\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+\.\d+\.\d+\.\d+)\s+ar(?:e(?:a)?)?\s+(\d+)$/, 'network $1 $2 area $3');
+  return cmd;
+}
+
+// ===== COMMAND PROCESSOR =====
+function processCmd(dev, raw) {
+  if (!raw) return;
+  let cmd = raw.toLowerCase().trim();
+  cmd = normalizeConfig(cmd);
+  const d = devices[dev];
+
+  // === PC COMMAND PROMPT ===
+  if (d.type === 'pc') {
+    const mPing = cmd.match(/^ping (\d+\.\d+\.\d+\.\d+)$/);
+    if (mPing) { doPing(dev, mPing[1]); return; }
+    const mTrace = cmd.match(/^tracert (\d+\.\d+\.\d+\.\d+)$/);
+    if (mTrace) { doTracert(dev, mTrace[1]); return; }
+    if (cmd === 'ipconfig') {
+      printLine('\nWindows IP Configuration\n');
+      printLine('Ethernet adapter Ethernet0:');
+      printLine('   IPv4 Address. . . . . . . : ' + d.ip);
+      printLine('   Subnet Mask . . . . . . . : ' + d.mask);
+      printLine('   Default Gateway . . . . . : ' + d.gateway + '\n');
+      return;
+    }
+    printLine("'" + raw + "' is not recognized as a command.\nTry: ping <ip>, tracert <ip>, ipconfig", 'error');
+    return;
+  }
+
+  // === SWITCH CLI ===
+  if (d.type === 'switch') { processSwitchCmd(cmd, raw); return; }
+
+  // === ROUTER CLI ===
+  if (d.type === 'router') { processRouterCmd(cmd, raw); return; }
+}
+
+// ===== SWITCH COMMANDS =====
+function processSwitchCmd(cmd, raw) {
+  const s = devices.sw1;
+  cmd = normalizeConfig(cmd);
+
+  if (cmd === 'exit') {
+    if (s.mode === 'iface' || s.mode === 'vlan') { s.mode = 'config'; s.currentIface = null; s.currentVlan = null; }
+    else if (s.mode === 'config') s.mode = 'enable';
+    else if (s.mode === 'enable') s.mode = 'user';
+    return;
+  }
+  if (cmd === 'end') { s.mode = 'enable'; s.currentIface = null; s.currentVlan = null; return; }
+
+  if (s.mode === 'user') {
+    if (cmd === 'enable' || cmd === 'en') { s.mode = 'enable'; return; }
+    printLine('% Unknown command.', 'error'); return;
+  }
+
+  // Show commands from any mode except user
+  if (s.mode !== 'user') {
+    const showInput = cmd.replace(/^do\s+/, '');
+    const showCmd = normalizeShow(showInput);
+    if (showCmd) {
+      if (showCmd === 'show running-config') { showSwRunConfig(); return; }
+      if (showCmd === 'show vlan brief') { showVlanBrief(); return; }
+      if (showCmd === 'show interfaces trunk') { showTrunk(); return; }
+      if (showCmd === 'show interfaces') { showSwInterfaces(); return; }
+      if (showCmd === 'show mac address-table') { showMacTable(); return; }
+      if (showCmd === 'show version') { showSwVersion(); return; }
+      printLine('% Incomplete or unrecognized show command.', 'error'); return;
+    }
+  }
+
+  if (s.mode === 'enable') {
+    if (cmd === 'configure terminal' || cmd === 'conf t') { s.mode = 'config'; printLine('Enter configuration commands, one per line.'); return; }
+    printLine('% Unknown command: "' + raw + '"', 'error'); return;
+  }
+
+  if (s.mode === 'config') {
+    const mVlan = cmd.match(/^vlan (\d+)$/);
+    if (mVlan) {
+      const vid = parseInt(mVlan[1]);
+      if (!s.vlans[vid]) s.vlans[vid] = 'VLAN' + vid;
+      s.currentVlan = vid;
+      s.mode = 'vlan';
+      return;
+    }
+    const mIf = cmd.match(/^int(?:erface)? ([\w\/\.]+)$/);
+    if (mIf) {
+      let ifn = mIf[1].toLowerCase();
+      ifn = ifn.replace(/^f(\d)/, 'fa$1').replace(/^fastethernet/, 'fa');
+      s.currentIface = ifn;
+      if (!s.ports[s.currentIface]) s.ports[s.currentIface] = {};
+      s.mode = 'iface';
+      return;
+    }
+    printLine('% Unknown command: "' + raw + '"', 'error'); return;
+  }
+
+  if (s.mode === 'vlan') {
+    const mName = cmd.match(/^name (.+)$/);
+    if (mName) { s.vlans[s.currentVlan] = raw.substring(5); return; }
+    // Allow jumping to another vlan from vlan mode
+    const mVlan3 = cmd.match(/^vlan (\d+)$/);
+    if (mVlan3) {
+      const vid = parseInt(mVlan3[1]);
+      if (!s.vlans[vid]) s.vlans[vid] = 'VLAN' + vid;
+      s.currentVlan = vid;
+      return;
+    }
+    // Allow switching to interface from vlan mode
+    const mIf2 = cmd.match(/^int(?:erface)? ([\w\/\.]+)$/);
+    if (mIf2) {
+      let ifn = mIf2[1].toLowerCase();
+      ifn = ifn.replace(/^f(\d)/, 'fa$1').replace(/^fastethernet/, 'fa');
+      s.currentIface = ifn;
+      s.currentVlan = null;
+      if (!s.ports[s.currentIface]) s.ports[s.currentIface] = {};
+      s.mode = 'iface';
+      return;
+    }
+    printLine('% Unknown command: "' + raw + '"', 'error'); return;
+  }
+
+  if (s.mode === 'iface') {
+    // Allow switching interfaces without exit
+    const mIf3 = cmd.match(/^int(?:erface)? ([\w\/\.]+)$/);
+    if (mIf3) {
+      let ifn = mIf3[1].toLowerCase();
+      ifn = ifn.replace(/^f(\d)/, 'fa$1').replace(/^fastethernet/, 'fa');
+      s.currentIface = ifn;
+      if (!s.ports[s.currentIface]) s.ports[s.currentIface] = {};
+      return;
+    }
+    // Allow jumping to vlan from iface mode
+    const mVlan2 = cmd.match(/^vlan (\d+)$/);
+    if (mVlan2) {
+      const vid = parseInt(mVlan2[1]);
+      if (!s.vlans[vid]) s.vlans[vid] = 'VLAN' + vid;
+      s.currentVlan = vid;
+      s.currentIface = null;
+      s.mode = 'vlan';
+      return;
+    }
+
+    const port = s.ports[s.currentIface];
+    if (cmd === 'switchport mode trunk') { port.mode = 'trunk'; return; }
+    if (cmd === 'switchport mode access') { port.mode = 'access'; return; }
+    const mAccessVlan = cmd.match(/^switchport access vlan (\d+)$/);
+    if (mAccessVlan) {
+      const vid = parseInt(mAccessVlan[1]);
+      if (!s.vlans[vid]) { printLine('% VLAN ' + vid + ' does not exist. Create it first.', 'error'); return; }
+      port.mode = 'access';
+      port.vlan = vid;
+      return;
+    }
+    printLine('% Unknown command: "' + raw + '"', 'error'); return;
+  }
+}
+
+// ===== SWITCH SHOW COMMANDS =====
+function showVlanBrief() {
+  const s = devices.sw1;
+  let out = '\nVLAN  Name                Status    Ports\n';
+  out += '----  ------------------  --------- ----------------\n';
+  out += '1     default             active    \n';
+  for (const [vid, name] of Object.entries(s.vlans)) {
+    const ports = Object.entries(s.ports)
+      .filter(([, p]) => p.mode === 'access' && p.vlan == vid)
+      .map(([k]) => k).join(', ');
+    out += vid.toString().padEnd(6) + name.padEnd(20) + 'active    ' + ports + '\n';
+  }
+  printLine(out);
+}
+
+function showTrunk() {
+  const s = devices.sw1;
+  const trunks = Object.entries(s.ports).filter(([, p]) => p.mode === 'trunk');
+  if (trunks.length === 0) { printLine('\n% No trunk interfaces configured.\n', 'error'); return; }
+  let out = '\nPort      Mode         Encapsulation  Status\n';
+  out += '--------  -----------  -------------  ------\n';
+  for (const [k] of trunks) {
+    out += k.padEnd(10) + 'on           802.1q         trunking\n';
+  }
+  printLine(out);
+}
+
+function showSwRunConfig() {
+  const s = devices.sw1;
+  let out = '\nBuilding configuration...\n\nCurrent configuration : SW1\n!\nversion 15.0\n';
+  out += 'hostname ' + s.hostname + '\n!\n';
+  for (const [vid, name] of Object.entries(s.vlans)) {
+    out += 'vlan ' + vid + '\n name ' + name + '\n!\n';
+  }
+  for (const [iface, cfg] of Object.entries(s.ports)) {
+    out += 'interface ' + iface.charAt(0).toUpperCase() + iface.charAt(1) + iface.slice(2) + '\n';
+    if (cfg.mode === 'trunk') out += ' switchport mode trunk\n';
+    if (cfg.mode === 'access') {
+      out += ' switchport mode access\n';
+      if (cfg.vlan) out += ' switchport access vlan ' + cfg.vlan + '\n';
+    }
+    out += '!\n';
+  }
+  out += 'line con 0\nline vty 0 4\n login\n!\nend\n';
+  printLine(out);
+}
+
+function showSwInterfaces() {
+  const s = devices.sw1;
+  let out = '';
+  const defaultPorts = ['fa0/1', 'fa0/2', 'fa0/24'];
+  const allPorts = new Set([...defaultPorts, ...Object.keys(s.ports)]);
+  for (const k of allPorts) {
+    const ifLabel = k.charAt(0).toUpperCase() + k.charAt(1) + k.slice(2);
+    const cfg = s.ports[k] || {};
+    out += '\n' + ifLabel + ' is up, line protocol is up (connected)\n';
+    out += '  Hardware is FastEthernet, address is aabb.cc00.sw' + k.replace('fa0/', '') + '0\n';
+    out += '  MTU 1500 bytes, BW 100000 Kbit/sec, DLY 100 usec,\n';
+    out += '     reliability 255/255, txload 1/255, rxload 1/255\n';
+    out += '  Encapsulation ARPA, loopback not set\n';
+    out += '  Full-duplex, 100Mb/s\n';
+    if (cfg.mode === 'trunk') out += '  Switchport mode: trunk\n';
+    else if (cfg.mode === 'access' && cfg.vlan) out += '  Switchport mode: access, VLAN ' + cfg.vlan + '\n';
+    else out += '  Switchport mode: dynamic auto\n';
+  }
+  printLine(out);
+}
+
+function showMacTable() {
+  let out = '\n          Mac Address Table\n-------------------------------------------\n';
+  out += 'Vlan    Mac Address       Type        Ports\n';
+  out += '----    -----------       --------    -----\n';
+  const s = devices.sw1;
+  const fa01 = s.ports['fa0/1'];
+  const fa02 = s.ports['fa0/2'];
+  if (fa01 && fa01.vlan) {
+    out += fa01.vlan.toString().padEnd(8) + 'aabb.cc00.0010    DYNAMIC     Fa0/1\n';
+  }
+  if (fa02 && fa02.vlan) {
+    out += fa02.vlan.toString().padEnd(8) + 'aabb.cc00.0020    DYNAMIC     Fa0/2\n';
+  }
+  out += 'Total Mac Addresses for this criterion: ' + ((fa01 && fa01.vlan ? 1 : 0) + (fa02 && fa02.vlan ? 1 : 0)) + '\n';
+  printLine(out);
+}
+
+function showSwVersion() {
+  let out = '\nCisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 15.0(2)SE\n';
+  out += 'ROM: Bootstrap program is C2960 boot loader\n\n';
+  out += 'SW1 uptime is 5 minutes\n';
+  out += 'System image file is "flash:c2960-lanbasek9-mz.150-2.SE.bin"\n\n';
+  out += 'Cisco WS-C2960-24TT-L (PowerPC) processor with 65536K bytes of memory.\n';
+  out += '24 FastEthernet interfaces\n';
+  out += '2 Gigabit Ethernet interfaces\n';
+  out += '64K bytes of flash-simulated non-volatile configuration memory.\n';
+  out += 'Configuration register is 0xF\n';
+  printLine(out);
+}
+
+// ===== ROUTER COMMANDS =====
+function processRouterCmd(cmd, raw) {
+  const r = devices.r1;
+  cmd = normalizeConfig(cmd);
+
+  if (cmd === 'exit') {
+    if (r.mode === 'iface') { r.mode = 'config'; r.currentIface = null; }
+    else if (r.mode === 'config') r.mode = 'enable';
+    else if (r.mode === 'enable') r.mode = 'user';
+    return;
+  }
+  if (cmd === 'end') { r.mode = 'enable'; r.currentIface = null; return; }
+
+  if (r.mode === 'user') {
+    if (cmd === 'enable' || cmd === 'en') { r.mode = 'enable'; return; }
+    printLine('% Unknown command.', 'error'); return;
+  }
+
+  // Show commands from any mode except user
+  if (r.mode !== 'user') {
+    const showInput = cmd.replace(/^do\s+/, '');
+    const showCmd = normalizeShow(showInput);
+    if (showCmd) {
+      if (showCmd === 'show running-config') { showRtrRunConfig(); return; }
+      if (showCmd === 'show ip interface brief') { showRtrIntBrief(); return; }
+      if (showCmd === 'show ip route') { showRtrRoute(); return; }
+      if (showCmd === 'show interfaces') { showRtrInterfaces(); return; }
+      if (showCmd === 'show version') { showRtrVersion(); return; }
+      if (showCmd === 'show ip interface') { showRtrIpInterface(); return; }
+      printLine('% Incomplete or unrecognized show command.', 'error'); return;
+    }
+  }
+
+  // Ping/traceroute from enable mode
+  if (r.mode === 'enable') {
+    if (cmd === 'configure terminal' || cmd === 'conf t') { r.mode = 'config'; printLine('Enter configuration commands, one per line.'); return; }
+    const mPing = cmd.match(/^ping (\d+\.\d+\.\d+\.\d+)$/);
+    if (mPing) { doRouterPing(mPing[1]); return; }
+    printLine('% Unknown command: "' + raw + '"', 'error'); return;
+  }
+
+  if (r.mode === 'config') {
+    const mIf = cmd.match(/^int(?:erface)? ([\w\/\.]+)$/);
+    if (mIf) {
+      let ifn = mIf[1].toLowerCase();
+      ifn = ifn.replace(/^f(\d)/, 'fa$1').replace(/^fastethernet/, 'fa');
+      r.currentIface = ifn;
+      if (!r.interfaces[r.currentIface]) r.interfaces[r.currentIface] = {};
+      r.mode = 'iface';
+      return;
+    }
+    printLine('% Unknown command: "' + raw + '"', 'error'); return;
+  }
+
+  if (r.mode === 'iface') {
+    // Allow switching interfaces without exit
+    const mIf2 = cmd.match(/^int(?:erface)? ([\w\/\.]+)$/);
+    if (mIf2) {
+      let ifn = mIf2[1].toLowerCase();
+      ifn = ifn.replace(/^f(\d)/, 'fa$1').replace(/^fastethernet/, 'fa');
+      r.currentIface = ifn;
+      if (!r.interfaces[r.currentIface]) r.interfaces[r.currentIface] = {};
+      return;
+    }
+
+    const iface = r.interfaces[r.currentIface];
+    if (cmd === 'no shutdown' || cmd === 'no shut') {
+      iface.up = true;
+      printLine('%LINK-5-CHANGED: Interface ' + r.currentIface + ', changed state to up');
+      return;
+    }
+    const mEncap = cmd.match(/^encapsulation dot1q (\d+)$/);
+    if (mEncap) { iface.encap = parseInt(mEncap[1]); return; }
+    const mIp = cmd.match(/^ip address (\d+\.\d+\.\d+\.\d+) (\d+\.\d+\.\d+\.\d+)$/);
+    if (mIp) { iface.ip = mIp[1]; iface.mask = mIp[2]; return; }
+    printLine('% Unknown command: "' + raw + '"', 'error'); return;
+  }
+}
+
+function doRouterPing(dstIp) {
+  // Router ping — check if destination is on a connected, up subinterface network
+  const r = devices.r1;
+  const fa00 = r.interfaces['fa0/0'];
+  const physUp = !!(fa00 && fa00.up);
+  if (!physUp) {
+    printLine('\nPinging ' + dstIp + ' ...');
+    for (let i = 0; i < 5; i++) printLine('.', 'error');
+    printLine('Success rate is 0 percent (0/5)', 'error');
+    return;
+  }
+  // Check if dest is reachable via subinterfaces
+  const dstNet = dstIp.split('.').slice(0, 3).join('.');
+  let matchSub = null;
+  for (const [k, v] of Object.entries(r.interfaces)) {
+    if (k.includes('.') && v.ip && v.ip.split('.').slice(0, 3).join('.') === dstNet && v.encap) {
+      matchSub = v;
+      break;
+    }
+  }
+  printLine('\nType escape sequence to abort.\nSending 5, 100-byte ICMP Echos to ' + dstIp + ', timeout is 2 seconds:');
+  if (matchSub) {
+    printLine('!!!!!');
+    printLine('Success rate is 100 percent (5/5), round-trip min/avg/max = 1/1/1 ms');
+  } else {
+    printLine('.....');
+    printLine('Success rate is 0 percent (0/5)', 'error');
+  }
+}
+
+// ===== ROUTER SHOW COMMANDS =====
+function showRtrRunConfig() {
+  const r = devices.r1;
+  let out = '\nBuilding configuration...\n\nCurrent configuration : R1\n!\nversion 15.4\n';
+  out += 'hostname ' + r.hostname + '\n!\n';
+  // Physical interface
+  const fa00 = r.interfaces['fa0/0'] || {};
+  out += 'interface Fa0/0\n';
+  if (!fa00.up) out += ' shutdown\n';
+  else out += ' no shutdown\n';
+  out += '!\n';
+  // Subinterfaces
+  for (const [k, v] of Object.entries(r.interfaces)) {
+    if (!k.includes('.')) continue;
+    const ifLabel = 'Fa' + k.slice(2);
+    out += 'interface ' + ifLabel + '\n';
+    if (v.encap) out += ' encapsulation dot1Q ' + v.encap + '\n';
+    if (v.ip) out += ' ip address ' + v.ip + ' ' + v.mask + '\n';
+    out += '!\n';
+  }
+  out += 'line con 0\nline vty 0 4\n login\n!\nend\n';
+  printLine(out);
+}
+
+function showRtrIntBrief() {
+  const r = devices.r1;
+  let out = '\nInterface         IP-Address      OK?  Method  Status                Protocol\n';
+  // Show fa0/0 first
+  const fa00 = r.interfaces['fa0/0'] || {};
+  const fa00up = !!fa00.up;
+  out += 'Fa0/0'.padEnd(18) + (fa00.ip || 'unassigned').padEnd(16) + 'YES  manual  ' + (fa00up ? 'up' : 'administratively down').padEnd(22) + (fa00up ? 'up' : 'down') + '\n';
+  // Subinterfaces
+  for (const [k, v] of Object.entries(r.interfaces)) {
+    if (!k.includes('.')) continue;
+    const ifLabel = 'Fa' + k.slice(2);
+    const subUp = fa00up && v.encap && v.ip;
+    out += ifLabel.padEnd(18) + (v.ip || 'unassigned').padEnd(16) + 'YES  manual  ' + (subUp ? 'up' : 'down').padEnd(22) + (subUp ? 'up' : 'down') + '\n';
+  }
+  // Fa0/1
+  out += 'Fa0/1'.padEnd(18) + 'unassigned'.padEnd(16) + 'YES  unset   administratively down down\n';
+  printLine(out);
+}
+
+function showRtrRoute() {
+  const r = devices.r1;
+  const fa00 = r.interfaces['fa0/0'];
+  const physUp = !!(fa00 && fa00.up);
+  let out = '\nCodes: L - local, C - connected, S - static\n';
+  out += '       [AD/metric]\n\n';
+  out += 'Gateway of last resort is not set\n\n';
+  if (physUp) {
+    for (const [k, v] of Object.entries(r.interfaces)) {
+      if (!k.includes('.') || !v.ip || !v.encap) continue;
+      const net = v.ip.replace(/\.\d+$/, '.0');
+      const ifLabel = 'Fa' + k.slice(2);
+      out += 'C   ' + net + '/24 is directly connected, ' + ifLabel + '\n';
+      out += 'L   ' + v.ip + '/32 is directly connected, ' + ifLabel + '\n';
+    }
+  }
+  printLine(out);
+}
+
+function showRtrInterfaces() {
+  const r = devices.r1;
+  let out = '';
+  const fa00 = r.interfaces['fa0/0'] || {};
+  const fa00up = !!fa00.up;
+  out += '\nFa0/0 is ' + (fa00up ? 'up' : 'administratively down') + ', line protocol is ' + (fa00up ? 'up' : 'down') + '\n';
+  out += '  Hardware is FastEthernet, address is aabb.cc00.0100\n';
+  out += '  MTU 1500 bytes, BW 100000 Kbit/sec, DLY 100 usec,\n';
+  out += '     reliability 255/255, txload 1/255, rxload 1/255\n';
+  out += '  Encapsulation ARPA, loopback not set\n';
+  out += '  Full-duplex, 100Mb/s\n';
+  for (const [k, v] of Object.entries(r.interfaces)) {
+    if (!k.includes('.')) continue;
+    const ifLabel = 'Fa' + k.slice(2);
+    const subUp = fa00up && v.encap && v.ip;
+    out += '\n' + ifLabel + ' is ' + (subUp ? 'up' : 'down') + ', line protocol is ' + (subUp ? 'up' : 'down') + '\n';
+    out += '  Hardware is FastEthernet, address is aabb.cc00.0100\n';
+    if (v.ip) out += '  Internet address is ' + v.ip + '/' + (v.mask === '255.255.255.0' ? '24' : v.mask) + '\n';
+    if (v.encap) out += '  Encapsulation 802.1Q Virtual LAN, Vlan ID ' + v.encap + '\n';
+    else out += '  Encapsulation ARPA\n';
+    out += '  MTU 1500 bytes, BW 100000 Kbit/sec, DLY 100 usec,\n';
+    out += '     reliability 255/255, txload 1/255, rxload 1/255\n';
+  }
+  printLine(out);
+}
+
+function showRtrIpInterface() {
+  const r = devices.r1;
+  let out = '';
+  const fa00 = r.interfaces['fa0/0'] || {};
+  const fa00up = !!fa00.up;
+  out += '\nFa0/0 is ' + (fa00up ? 'up' : 'administratively down') + ', line protocol is ' + (fa00up ? 'up' : 'down') + '\n';
+  out += '  Internet protocol processing disabled\n';
+  for (const [k, v] of Object.entries(r.interfaces)) {
+    if (!k.includes('.')) continue;
+    const ifLabel = 'Fa' + k.slice(2);
+    const subUp = fa00up && v.encap && v.ip;
+    out += '\n' + ifLabel + ' is ' + (subUp ? 'up' : 'down') + ', line protocol is ' + (subUp ? 'up' : 'down') + '\n';
+    if (v.ip) {
+      out += '  Internet address is ' + v.ip + '/24\n';
+      out += '  Broadcast address is 255.255.255.255\n';
+      out += '  MTU is 1500 bytes\n';
+      out += '  Helper address is not set\n';
+    }
+  }
+  printLine(out);
+}
+
+function showRtrVersion() {
+  let out = '\nCisco IOS Software, ISR Software (ISR-UNIVERSALK9-M), Version 15.4(3)M3\n';
+  out += 'ROM: System Bootstrap, Version 15.4(3)M3\n\n';
+  out += 'R1 uptime is 5 minutes\n';
+  out += 'System image file is "flash:isr-universalk9-mz.SPA.154-3.M3.bin"\n\n';
+  out += 'Cisco ISR4321/K9 (revision 1.0) with 1048576K/6147K bytes of memory.\n';
+  out += '2 FastEthernet interfaces\n';
+  out += '256K bytes of non-volatile configuration memory.\n';
+  out += 'Configuration register is 0x2102\n';
+  printLine(out);
+}
+
+// ===== STATUS UPDATE =====
+function updateStatus() {
+  const sw = devices.sw1;
+  const r = devices.r1;
+
+  const vlan10 = !!sw.vlans[10];
+  const vlan20 = !!sw.vlans[20];
+  const vlanCount = Object.keys(sw.vlans).length;
+
+  const fa01 = sw.ports['fa0/1'];
+  const fa02 = sw.ports['fa0/2'];
+  const access10 = !!(fa01 && fa01.mode === 'access' && fa01.vlan == 10);
+  const access20 = !!(fa02 && fa02.mode === 'access' && fa02.vlan == 20);
+
+  const fa24 = sw.ports['fa0/24'];
+  const hasTrunk = !!(fa24 && fa24.mode === 'trunk');
+
+  const sub10 = r.interfaces['fa0/0.10'];
+  const sub20 = r.interfaces['fa0/0.20'];
+  const sub10Done = !!(sub10 && sub10.encap === 10 && sub10.ip);
+  const sub20Done = !!(sub20 && sub20.encap === 20 && sub20.ip);
+
+  const fa00 = r.interfaces['fa0/0'];
+  const noshutDone = !!(fa00 && fa00.up);
+
+  const allGood = vlan10 && vlan20 && access10 && access20 && hasTrunk && sub10Done && sub20Done && noshutDone;
+
+  // Footer status
+  document.getElementById('stat-vlans').textContent = vlanCount ? 'VLANs: ' + Object.keys(sw.vlans).join(', ') : '-';
+  document.getElementById('stat-trunk').textContent = hasTrunk ? 'Fa0/24 trunking' : '-';
+  const subs = Object.keys(r.interfaces).filter(k => k.includes('.'));
+  document.getElementById('stat-subs').textContent = subs.length ? subs.join(', ') : '-';
+  document.getElementById('stat-routing').textContent = allGood ? 'ACTIVE' : 'inactive';
+  document.getElementById('stat-routing').style.color = allGood ? '#00ff41' : '';
+
+  // Update sublabels
+  document.getElementById('sw1-label').textContent = vlanCount ? vlanCount + ' VLANs' + (hasTrunk ? ', trunk up' : '') : 'Cisco 2960';
+  document.getElementById('r1-label').textContent = subs.length ? subs.length + ' subinterfaces' + (noshutDone ? ', Fa0/0 up' : '') : 'Cisco ISR';
+
+  // === Task wrong (partial) states ===
+  // Task 1: wrong if only one VLAN created
+  const task1partial = (vlan10 || vlan20) && !(vlan10 && vlan20);
+  setTaskWrong(1, task1partial);
+
+  // Task 2: wrong if one port assigned but not the other
+  const task2partial = (access10 || access20) && !(access10 && access20);
+  setTaskWrong(2, task2partial);
+
+  // Task 3: no partial state — either done or not
+  setTaskWrong(3, false);
+
+  // Task 4: wrong if subinterface exists but missing encap or IP
+  const sub10started = !!sub10 && (sub10.encap || sub10.ip);
+  setTaskWrong(4, sub10started && !sub10Done);
+
+  // Task 5: wrong if subinterface exists but missing encap or IP
+  const sub20started = !!sub20 && (sub20.encap || sub20.ip);
+  setTaskWrong(5, sub20started && !sub20Done);
+
+  // Task 6: no partial
+  setTaskWrong(6, false);
+
+  // Task 7: no partial
+  setTaskWrong(7, false);
+
+  // === Task completion ===
+  setTaskDone(1, vlan10 && vlan20);
+  setTaskDone(2, access10 && access20);
+  setTaskDone(3, hasTrunk);
+  setTaskDone(4, sub10Done);
+  setTaskDone(5, sub20Done);
+  setTaskDone(6, noshutDone);
+  setTaskDone(7, pingSuccess && allGood);
+
+  // Success modal
+  if (pingSuccess && allGood) {
+    setTimeout(() => document.getElementById('successModal').classList.add('active'), 800);
+  }
+
+  drawLines();
+}
+
+function setTaskDone(n, done) {
+  const el = document.getElementById('task' + n);
+  if (done) { el.classList.add('done'); el.classList.remove('wrong'); }
+  else el.classList.remove('done');
+}
+function setTaskWrong(n, wrong) {
+  const el = document.getElementById('task' + n);
+  if (el.classList.contains('done')) return;
+  if (wrong) el.classList.add('wrong'); else el.classList.remove('wrong');
+}
+
+// ===== DRAW TOPOLOGY LINES =====
+function drawLines() {
+  const svg = document.getElementById('svg-lines');
+  const topo = document.getElementById('topology');
+  const rect = topo.getBoundingClientRect();
+
+  function center(id) {
+    const el = document.getElementById(id);
+    const icon = el.querySelector('.device-icon') || el;
+    const r = icon.getBoundingClientRect();
+    return { x: r.left - rect.left + r.width / 2, y: r.top - rect.top + r.height / 2 };
+  }
+
+  function linkLight(from, to, up) {
+    const color = up ? '#00ff41' : '#ff4444';
+    const dx = to.x - from.x, dy = to.y - from.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len === 0) return '';
+    const ux = dx / len, uy = dy / len;
+    const cx = from.x + ux * 28, cy = from.y + uy * 28;
+    const size = 5;
+    const px = -uy, py = ux;
+    const tip = { x: cx + ux * size, y: cy + uy * size };
+    const bl = { x: cx - px * size, y: cy - py * size };
+    const br = { x: cx + px * size, y: cy + py * size };
+    return `<polygon points="${tip.x},${tip.y} ${bl.x},${bl.y} ${br.x},${br.y}" fill="${color}" stroke="${up ? '#00cc33' : '#cc0000'}" stroke-width="0.5"/>`;
+  }
+
+  function portLabel(from, to, label, side) {
+    const dx = to.x - from.x, dy = to.y - from.y;
+    const len = Math.sqrt(dx * dx + dy * dy); if (len === 0) return '';
+    const ux = dx / len, uy = dy / len;
+    const px = -uy, py = ux;
+    const dist = 42;
+    const offset = side === 'left' ? -10 : 10;
+    const x = from.x + ux * dist + px * offset;
+    const y = from.y + uy * dist + py * offset;
+    return `<text x="${x}" y="${y}" fill="#666" font-size="9" text-anchor="middle" font-family="Courier New">${label}</text>`;
+  }
+
+  const pc1 = center('dev-pc1');
+  const pc2 = center('dev-pc2');
+  const sw1 = center('dev-sw1');
+  const r1 = center('dev-r1');
+
+  const sw = devices.sw1;
+  const r = devices.r1;
+
+  const fa01cfg = sw.ports['fa0/1'];
+  const fa02cfg = sw.ports['fa0/2'];
+  const fa24cfg = sw.ports['fa0/24'];
+  const pc1linked = !!(fa01cfg && fa01cfg.vlan);
+  const pc2linked = !!(fa02cfg && fa02cfg.vlan);
+  const trunkUp = !!(fa24cfg && fa24cfg.mode === 'trunk');
+  const fa00 = r.interfaces['fa0/0'];
+  const rtrUp = !!(fa00 && fa00.up);
+  const trunkAndRtr = trunkUp && rtrUp;
+
+  svg.innerHTML = `
+    <line x1="${pc1.x}" y1="${pc1.y}" x2="${sw1.x}" y2="${sw1.y}" stroke="${pc1linked ? '#00d4ff' : '#00d4ff55'}" stroke-width="${pc1linked ? 3 : 2}" stroke-linecap="round"/>
+    <line x1="${pc2.x}" y1="${pc2.y}" x2="${sw1.x}" y2="${sw1.y}" stroke="${pc2linked ? '#00d4ff' : '#00d4ff55'}" stroke-width="${pc2linked ? 3 : 2}" stroke-linecap="round"/>
+    <line x1="${sw1.x}" y1="${sw1.y}" x2="${r1.x}" y2="${r1.y}" stroke="${trunkAndRtr ? '#00ff41' : trunkUp ? '#00d4ff' : '#00d4ff55'}" stroke-width="${trunkUp ? 4 : 2}" stroke-linecap="round"/>
+
+    ${linkLight(sw1, pc1, pc1linked)}
+    ${linkLight(sw1, pc2, pc2linked)}
+    ${linkLight(sw1, r1, trunkUp)}
+    ${linkLight(r1, sw1, rtrUp)}
+
+    ${portLabel(sw1, pc1, 'Fa0/1', 'right')}
+    ${portLabel(sw1, pc2, 'Fa0/2', 'right')}
+    ${portLabel(sw1, r1, 'Fa0/24', 'left')}
+    ${portLabel(r1, sw1, 'Fa0/0', 'right')}
+  `;
+}
+
+setInterval(updateStatus, 1000);
+window.addEventListener('load', drawLines);
+window.addEventListener('resize', drawLines);
+
+// ===== RESIZABLE RIGHT PANEL =====
+(function() {
+  const panel = document.getElementById('right-panel');
+  const handle = document.getElementById('panel-resize-handle');
+  const BASE_WIDTH = 360;
+  const MIN_WIDTH = 300;
+  const MAX_WIDTH = Math.round(window.innerWidth * 0.7);
+  let dragging = false;
+  let startX, startWidth;
+
+  function applyScale(width) {
+    const scale = 1 + (width - BASE_WIDTH) / (MAX_WIDTH - BASE_WIDTH) * 0.18;
+    panel.querySelector('.panel-scroll').style.fontSize = scale + 'em';
+  }
+
+  handle.addEventListener('mousedown', function(e) {
+    e.preventDefault();
+    dragging = true;
+    startX = e.clientX;
+    startWidth = panel.offsetWidth;
+    handle.classList.add('dragging');
+    document.body.classList.add('resizing');
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!dragging) return;
+    const diff = startX - e.clientX;
+    let newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth + diff));
+    panel.style.width = newWidth + 'px';
+    applyScale(newWidth);
+    drawLines();
+  });
+
+  document.addEventListener('mouseup', function() {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('dragging');
+    document.body.classList.remove('resizing');
+  });
+
+  handle.addEventListener('dblclick', function() {
+    panel.style.width = BASE_WIDTH + 'px';
+    applyScale(BASE_WIDTH);
+    drawLines();
+  });
+})();
+</script>
+</body>
+</html>
