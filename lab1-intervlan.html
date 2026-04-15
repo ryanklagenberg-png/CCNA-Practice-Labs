@@ -891,72 +891,139 @@ function doTracert(srcDev, dstIp) {
 
 let pingSuccess = false;
 
-// ===== SHOW COMMAND NORMALIZER =====
-function normalizeShow(cmd) {
-  if (!cmd.startsWith('sh')) return null;
-  cmd = cmd.replace(/^do\s+/, '');
+// ===== UNIFIED COMMAND NORMALIZER =====
+// Mirrors Cisco IOS prefix-shortening: any unambiguous prefix of a keyword
+// token expands to the full canonical form. First matching template wins.
+// Placeholders: NUM, IP, WORD, LINE, IFACE.
+const COMMAND_TEMPLATES = [
+  'configure terminal',
+  'copy running-config startup-config',
+  'write memory',
+  'write erase',
+  'erase startup-config',
+  'no shutdown',
+  'show running-config',
+  'show startup-config',
+  'show vlan brief',
+  'show vlan',
+  'show interfaces trunk',
+  'show interfaces',
+  'show interface',
+  'show mac address-table',
+  'show ip interface brief',
+  'show ip interface',
+  'show ip route',
+  'show version',
+  'show spanning-tree',
+  'show cdp neighbors',
+  'switchport mode access',
+  'switchport mode trunk',
+  'switchport access vlan NUM',
+  'switchport trunk encapsulation dot1q',
+  'switchport trunk native vlan NUM',
+  'switchport trunk allowed vlan LINE',
+  'encapsulation dot1q NUM',
+  'ip address IP IP',
+  'router ospf NUM',
+  'network IP IP area NUM',
+  'interface IFACE',
+  'hostname WORD',
+  'description LINE',
+  'vlan NUM',
+  'name LINE',
+  'ping IP',
+  'tracert IP',
+  'traceroute IP',
+  'enable',
+  'exit',
+  'end',
+  'disable',
+  'reload',
+  'shutdown',
+  'ipconfig',
+];
 
-  const patterns = [
-    [/^sh(?:ow)? ru(?:n(?:ning-config)?)?$/, 'show running-config'],
-    [/^sh(?:ow)? vl(?:an)? br(?:ief)?$/, 'show vlan brief'],
-    [/^sh(?:ow)? int(?:erfaces?)? tr(?:unk)?$/, 'show interfaces trunk'],
-    [/^sh(?:ow)? int(?:erfaces)?$/, 'show interfaces'],
-    [/^sh(?:ow)? mac(?:-|\s)add(?:ress)?(?:-|\s)?ta(?:ble)?$/, 'show mac address-table'],
-    [/^sh(?:ow)? ip int(?:erface)? br(?:ief)?$/, 'show ip interface brief'],
-    [/^sh(?:ow)? ip ro(?:ute)?$/, 'show ip route'],
-    [/^sh(?:ow)? ip int(?:erface)?$/, 'show ip interface'],
-    [/^sh(?:ow)? ver(?:sion)?$/, 'show version'],
-  ];
-  for (const [re, full] of patterns) {
-    if (re.test(cmd)) return full;
+function normalizeIface(s) {
+  s = s.toLowerCase();
+  const m = s.match(/^([a-z]*)(\d+(?:\/\d+){0,2}(?:\.\d+)?)$/);
+  if (!m) return null;
+  const prefix = m[1], rest = m[2];
+  let canon;
+  if (!prefix) canon = '';
+  else if (/^(f|fa|fas|fast|fastethernet)$/.test(prefix)) canon = 'fa';
+  else if (/^(g|gi|gig|gigabitethernet)$/.test(prefix)) canon = 'gi';
+  else if (/^(te|ten|tengigabitethernet)$/.test(prefix)) canon = 'te';
+  else if (/^(e|et|eth|ethernet)$/.test(prefix)) canon = 'eth';
+  else if (/^(lo|loop|loopback)$/.test(prefix)) canon = 'lo';
+  else if (/^(vl|vlan)$/.test(prefix)) canon = 'vlan';
+  else return null;
+  return canon + rest;
+}
+
+const PLACEHOLDER_TEST = {
+  NUM: s => /^\d+$/.test(s),
+  IP: s => /^\d+\.\d+\.\d+\.\d+$/.test(s),
+  WORD: s => /^\S+$/.test(s),
+};
+
+function expandTemplate(tokens, template) {
+  const ti = template.split(' ');
+  const out = [];
+  let ip = 0, tp = 0;
+  while (tp < ti.length) {
+    const t = ti[tp];
+    if (t === 'LINE') {
+      if (ip >= tokens.length) return null;
+      out.push(tokens.slice(ip).join(' '));
+      ip = tokens.length; tp++;
+      continue;
+    }
+    if (t === 'IFACE') {
+      if (ip >= tokens.length) return null;
+      const n = normalizeIface(tokens[ip]);
+      if (!n) return null;
+      out.push(n);
+      ip++; tp++;
+      continue;
+    }
+    if (PLACEHOLDER_TEST[t]) {
+      if (ip >= tokens.length) return null;
+      if (!PLACEHOLDER_TEST[t](tokens[ip])) return null;
+      out.push(tokens[ip]);
+      ip++; tp++;
+      continue;
+    }
+    if (ip >= tokens.length) return null;
+    const w = tokens[ip].toLowerCase();
+    if (w.length === 0 || !t.startsWith(w)) return null;
+    out.push(t);
+    ip++; tp++;
   }
-  if (/^sh(?:ow)?\s/.test(cmd)) return 'unknown-show';
+  if (ip !== tokens.length) return null;
+  return out.join(' ');
+}
+
+function normalizeCmd(input) {
+  if (!input) return input;
+  input = input.trim();
+  if (!input) return input;
+  const doM = input.match(/^do\s+(.+)$/i);
+  if (doM) return 'do ' + normalizeCmd(doM[1]);
+  const tokens = input.split(/\s+/);
+  for (const tpl of COMMAND_TEMPLATES) {
+    const r = expandTemplate(tokens, tpl);
+    if (r !== null) return r;
+  }
+  return input;
+}
+
+function normalizeShow(cmd) {
+  const n = normalizeCmd(cmd);
+  if (n && n.startsWith('show ')) return n;
   return null;
 }
 
-// Expand common Cisco shorthand for config-mode commands to canonical form.
-function normalizeConfig(cmd) {
-  // interface selection: int f0/1, int fa0/1, int gi0/0.10, int g0/0, int fastethernet0/1, etc.
-  let m = cmd.match(/^(?:int|interface)\s+([a-z]+)?\s*(\d+(?:\/\d+){0,2}(?:\.\d+)?)$/);
-  if (m) {
-    const prefix = (m[1] || '').toLowerCase();
-    const rest = m[2];
-    let canon;
-    if (!prefix) canon = '';
-    else if (/^(f|fa|fas|fast|fastethernet)$/.test(prefix)) canon = 'fa';
-    else if (/^(g|gi|gig|gigabitethernet)$/.test(prefix)) canon = 'gi';
-    else if (/^(te|ten|tengigabitethernet)$/.test(prefix)) canon = 'te';
-    else if (/^(e|et|eth|ethernet)$/.test(prefix)) canon = 'eth';
-    else if (/^(lo|loop|loopback)$/.test(prefix)) canon = 'lo';
-    else if (/^(vl|vlan)$/.test(prefix)) canon = 'vlan';
-    else canon = prefix;
-    return 'interface ' + canon + rest;
-  }
-  // mode/meta
-  cmd = cmd.replace(/^ena$/, 'enable');
-  cmd = cmd.replace(/^conf(?:i(?:g(?:u(?:r(?:e)?)?)?)?)?\s+t(?:e(?:r(?:m(?:i(?:n(?:a(?:l)?)?)?)?)?)?)?$/, 'configure terminal');
-  cmd = cmd.replace(/^ex(?:it)?$/, 'exit');
-  cmd = cmd.replace(/^host(?:n(?:a(?:m(?:e)?)?)?)?\s+(\S+)$/, 'hostname $1');
-  // switchport
-  cmd = cmd.replace(/^sw(?:i(?:t(?:c(?:h(?:p(?:o(?:r(?:t)?)?)?)?)?)?)?)?\s+mo(?:d(?:e)?)?\s+tr(?:u(?:n(?:k)?)?)?$/, 'switchport mode trunk');
-  cmd = cmd.replace(/^sw(?:i(?:t(?:c(?:h(?:p(?:o(?:r(?:t)?)?)?)?)?)?)?)?\s+mo(?:d(?:e)?)?\s+ac(?:c(?:e(?:s(?:s)?)?)?)?$/, 'switchport mode access');
-  cmd = cmd.replace(/^sw(?:i(?:t(?:c(?:h(?:p(?:o(?:r(?:t)?)?)?)?)?)?)?)?\s+ac(?:c(?:e(?:s(?:s)?)?)?)?\s+vl(?:a(?:n)?)?\s+(\d+)$/, 'switchport access vlan $1');
-  cmd = cmd.replace(/^sw(?:i(?:t(?:c(?:h(?:p(?:o(?:r(?:t)?)?)?)?)?)?)?)?\s+tr(?:u(?:n(?:k)?)?)?\s+en(?:c(?:a(?:p(?:s(?:u(?:l(?:a(?:t(?:i(?:o(?:n)?)?)?)?)?)?)?)?)?)?)?\s+dot1q$/, 'switchport trunk encapsulation dot1q');
-  cmd = cmd.replace(/^sw(?:i(?:t(?:c(?:h(?:p(?:o(?:r(?:t)?)?)?)?)?)?)?)?\s+tr(?:u(?:n(?:k)?)?)?\s+nat(?:i(?:v(?:e)?)?)?\s+vl(?:a(?:n)?)?\s+(\d+)$/, 'switchport trunk native vlan $1');
-  cmd = cmd.replace(/^sw(?:i(?:t(?:c(?:h(?:p(?:o(?:r(?:t)?)?)?)?)?)?)?)?\s+tr(?:u(?:n(?:k)?)?)?\s+al(?:l(?:o(?:w(?:e(?:d)?)?)?)?)?\s+vl(?:a(?:n)?)?\s+(.+)$/, 'switchport trunk allowed vlan $1');
-  // encapsulation dot1q N
-  cmd = cmd.replace(/^enc(?:a(?:p(?:s(?:u(?:l(?:a(?:t(?:i(?:o(?:n)?)?)?)?)?)?)?)?)?)?\s+dot1q\s+(\d+)$/, 'encapsulation dot1q $1');
-  // ip address A M
-  cmd = cmd.replace(/^ip\s+add(?:r(?:e(?:s(?:s)?)?)?)?\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+\.\d+\.\d+\.\d+)$/, 'ip address $1 $2');
-  // no shut / shut / description
-  cmd = cmd.replace(/^no\s+sh(?:u(?:t(?:d(?:o(?:w(?:n)?)?)?)?)?)?$/, 'no shutdown');
-  cmd = cmd.replace(/^sh(?:u(?:t(?:d(?:o(?:w(?:n)?)?)?)?)?)?$/, 'shutdown');
-  cmd = cmd.replace(/^desc(?:r(?:i(?:p(?:t(?:i(?:o(?:n)?)?)?)?)?)?)?\s+(.+)$/, 'description $1');
-  // OSPF
-  cmd = cmd.replace(/^rou(?:t(?:e(?:r)?)?)?\s+os(?:p(?:f)?)?\s+(\d+)$/, 'router ospf $1');
-  cmd = cmd.replace(/^net(?:w(?:o(?:r(?:k)?)?)?)?\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+\.\d+\.\d+\.\d+)\s+ar(?:e(?:a)?)?\s+(\d+)$/, 'network $1 $2 area $3');
-  return cmd;
-}
+function normalizeConfig(cmd) { return normalizeCmd(cmd); }
 
 // ===== COMMAND PROCESSOR =====
 function processCmd(dev, raw) {
@@ -1003,13 +1070,8 @@ function processSwitchCmd(cmd, raw) {
   }
   if (cmd === 'end') { s.mode = 'enable'; s.currentIface = null; s.currentVlan = null; return; }
 
-  if (s.mode === 'user') {
-    if (cmd === 'enable' || cmd === 'en') { s.mode = 'enable'; return; }
-    printLine('% Unknown command.', 'error'); return;
-  }
-
-  // Show commands from any mode except user
-  if (s.mode !== 'user') {
+  // Show commands work from ANY mode (do-prefix stripped unconditionally)
+  {
     const showInput = cmd.replace(/^do\s+/, '');
     const showCmd = normalizeShow(showInput);
     if (showCmd) {
@@ -1023,6 +1085,11 @@ function processSwitchCmd(cmd, raw) {
     }
   }
 
+  if (s.mode === 'user') {
+    if (cmd === 'enable' || cmd === 'en') { s.mode = 'enable'; return; }
+    printLine('% Unknown command.', 'error'); return;
+  }
+
   if (s.mode === 'enable') {
     if (cmd === 'configure terminal' || cmd === 'conf t') { s.mode = 'config'; printLine('Enter configuration commands, one per line.'); return; }
     printLine('% Unknown command: "' + raw + '"', 'error'); return;
@@ -1032,7 +1099,7 @@ function processSwitchCmd(cmd, raw) {
     const mVlan = cmd.match(/^vlan (\d+)$/);
     if (mVlan) {
       const vid = parseInt(mVlan[1]);
-      if (!s.vlans[vid]) s.vlans[vid] = 'VLAN' + vid;
+      if (!s.vlans[vid]) s.vlans[vid] = 'VLAN' + String(vid).padStart(4, '0');
       s.currentVlan = vid;
       s.mode = 'vlan';
       return;
@@ -1056,7 +1123,7 @@ function processSwitchCmd(cmd, raw) {
     const mVlan3 = cmd.match(/^vlan (\d+)$/);
     if (mVlan3) {
       const vid = parseInt(mVlan3[1]);
-      if (!s.vlans[vid]) s.vlans[vid] = 'VLAN' + vid;
+      if (!s.vlans[vid]) s.vlans[vid] = 'VLAN' + String(vid).padStart(4, '0');
       s.currentVlan = vid;
       return;
     }
@@ -1088,7 +1155,7 @@ function processSwitchCmd(cmd, raw) {
     const mVlan2 = cmd.match(/^vlan (\d+)$/);
     if (mVlan2) {
       const vid = parseInt(mVlan2[1]);
-      if (!s.vlans[vid]) s.vlans[vid] = 'VLAN' + vid;
+      if (!s.vlans[vid]) s.vlans[vid] = 'VLAN' + String(vid).padStart(4, '0');
       s.currentVlan = vid;
       s.currentIface = null;
       s.mode = 'vlan';
@@ -1101,7 +1168,11 @@ function processSwitchCmd(cmd, raw) {
     const mAccessVlan = cmd.match(/^switchport access vlan (\d+)$/);
     if (mAccessVlan) {
       const vid = parseInt(mAccessVlan[1]);
-      if (!s.vlans[vid]) { printLine('% VLAN ' + vid + ' does not exist. Create it first.', 'error'); return; }
+      if (!s.vlans[vid]) {
+        const name = 'VLAN' + String(vid).padStart(4, '0');
+        s.vlans[vid] = name;
+        printLine('% Access VLAN does not exist. Creating vlan ' + vid + ' (' + name + ')');
+      }
       port.mode = 'access';
       port.vlan = vid;
       return;
@@ -1221,13 +1292,8 @@ function processRouterCmd(cmd, raw) {
   }
   if (cmd === 'end') { r.mode = 'enable'; r.currentIface = null; return; }
 
-  if (r.mode === 'user') {
-    if (cmd === 'enable' || cmd === 'en') { r.mode = 'enable'; return; }
-    printLine('% Unknown command.', 'error'); return;
-  }
-
-  // Show commands from any mode except user
-  if (r.mode !== 'user') {
+  // Show commands work from ANY mode (do-prefix stripped unconditionally)
+  {
     const showInput = cmd.replace(/^do\s+/, '');
     const showCmd = normalizeShow(showInput);
     if (showCmd) {
@@ -1239,6 +1305,11 @@ function processRouterCmd(cmd, raw) {
       if (showCmd === 'show ip interface') { showRtrIpInterface(); return; }
       printLine('% Incomplete or unrecognized show command.', 'error'); return;
     }
+  }
+
+  if (r.mode === 'user') {
+    if (cmd === 'enable' || cmd === 'en') { r.mode = 'enable'; return; }
+    printLine('% Unknown command.', 'error'); return;
   }
 
   // Ping/traceroute from enable mode
